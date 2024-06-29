@@ -46,3 +46,11 @@ export EXTRA_VARS ?= "@$(5GC_ROOT_DIR)/vars/main.yml"
 5gc-upf-uninstall:
 	ansible-playbook -i $(HOSTS_INI_FILE) $(5GC_ROOT_DIR)/upf.yml --tags uninstall \
 		--extra-vars "ROOT_DIR=$(ROOT_DIR)" --extra-vars $(EXTRA_VARS)
+
+#### e. Provision Multiple SMF ###
+5gc-slice-install:
+	ansible-playbook -i $(HOSTS_INI_FILE) $(5GC_ROOT_DIR)/slice.yml --tags install \
+		--extra-vars "ROOT_DIR=$(ROOT_DIR)" --extra-vars $(EXTRA_VARS)
+5gc-slice-uninstall:
+	ansible-playbook -i $(HOSTS_INI_FILE) $(5GC_ROOT_DIR)/slice.yml --tags uninstall \
+		--extra-vars "ROOT_DIR=$(ROOT_DIR)" --extra-vars $(EXTRA_VARS)

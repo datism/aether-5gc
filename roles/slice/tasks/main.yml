@@ -1,0 +1,9 @@
+---
+
+- name: install 5gc/slice
+  import_tasks: roles/slice/tasks/install.yml
+  tags: install
+
+- name: uninstall 5gc/slice
+  import_tasks: roles/slice/tasks/uninstall.yml
+  tags: uninstall

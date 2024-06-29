@@ -1,0 +1,148 @@
+
+# Disable 4G Control Plane
+omec-control-plane:
+  enable4G: false
+
+# Disable 5G RAN Simulator
+5g-ran-sim:
+  enable: false
+  
+omec-sub-provision:
+  enable: false
+
+5g-control-plane:
+  enable5G: true
+  images:
+    repository: ""    # defaults to Docker Hub
+
+  kafka:
+    deploy: false
+
+  mongodb:
+    deploy: false
+
+  config:
+    managedByConfigPod:
+      enabled: false
+      syncUrl: http://sdcore-adapter-v2-1.aether-roc.svc:8080/synchronize
+
+    webui:
+      deploy: false
+    amf:
+      deploy: false
+    udm:
+      deploy: false
+    udr:
+      deploy: false
+    pcf:
+      deploy: false
+    nssf:
+      deploy: false
+    nrf:
+      deploy: false
+    ausf:
+      deploy: false
+    
+    
+    # SMF config override. Refer helm chart values for more options.
+    smf:
+      cfgFiles:
+        smfcfg.conf:
+          configuration:
+            # Storing AMF subscribers in the datastore is disabled by default.
+            # Once internal testing is complete we will enable DBStore by default.
+            enableDBStore: false
+            enableNrfCaching: false
+            enableUPFAdapter: false
+            nrfUri: http://nrf.omec.svc:29510
+            mongodb:
+              name: free5gc
+              url: "mongodb://mongodb-arbiter-headless.omec.svc"
+            smfDBName: {{ smf_db_name }}
+            kafkaInfo:
+              brokerUri: "kafka-headless.omec.svc"
+              brokerPort: 9092
+              topicName: "sdcore-data-source-smf"
+            nfKafka:
+              enable: true
+              topic: sdcore-nf-data-source
+              urls:
+              - kafka-headless.omec.svc:9092
+            webuiUri: webui.omec.svc:9876 # a valid URI of Webui
+            snssaiInfos:
+              - sNssai:
+                  sd:  {{ slice_sd }}
+                  sst: {{ slice_sst }}
+                dnnInfos:
+                  - dnn: "internet"
+                    dns: # the IP address of DNS
+                        ipv4: "8.8.8.8"
+                        ipv6: "2001:4860:4860::8888"
+                    ueSubnet: {{ upf_ue_ip_pool }} # should be CIDR type
+                plmnId:
+                      mcc: "208"
+                      mnc: "93"
+            userplane_information:
+              up_nodes:
+                UPF:
+                  type: UPF
+                  port: 8805
+                  sNssaiUpfInfos: # S-NSSAI information list for this UPF
+                    - sNssai: # S-NSSAI (Single Network Slice Selection Assistance Information)
+                        sst: {{ slice_sst }} # Slice/Service Type (uinteger, range: 0~255)
+                        sd: {{ slice_sd }} # Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)
+                      dnnUpfInfoList: # DNN information list for this S-NSSAI
+                        - dnn: "internet"
+                      plmnId:
+                        mcc: "208"
+                        mnc: "93"
+
+omec-user-plane:
+  enable: true
+  resources:
+    enabled: false
+  images:
+    repository: ""    # defaults to Docker Hub
+    # following two lines pull busybox from Docker Hub instead of Aether Registry
+    tags:
+      tools: omecproject/busybox:stable
+    # uncomment following section to add update bess image tag
+    #tags:
+    #  bess: <bess image tag>
+    #  pfcpiface: <pfcp image tag>
+  config:
+    upf:
+      name: "oaisim"
+      sriov:
+        enabled: false    # SRIOV is disabled by default
+      hugepage:
+        enabled: false    # Should be enabled if DPDK is enabled
+      cniPlugin: macvlan  # Can be any other plugin. Dictates how IP address are assigned
+      ipam: static
+      routes:
+        - to: {{ ansible_default_ipv4.address }}
+          via: 169.254.1.1
+      enb:
+        subnet: {{ ran_subnet }} # Subnet for the gNB network
+      access:
+        iface: {{ core.data_iface }}
+        gateway: 192.168.252.1
+        ip: {{ upf_access_ip }}
+      core:
+        iface: {{ core.data_iface }}
+        gateway: 192.168.250.1
+        ip: {{ upf_core_ip }}
+      cfgFiles:
+        upf.jsonc:
+          mode: af_packet     # This mode implies no DPDK
+          hwcksum: true
+          log_level: "trace"
+          measure_upf: true
+          measure_flow: true
+          gtppsc: true        # Extension header enabled in 5G.
+          cpiface:
+            dnn: "internet"              # Must match Slice dnn
+            hostname: "upf"
+            #http_port: "8080"
+            enable_ue_ip_alloc: false    # If true, UPF allocates address from following pool
+            ue_ip_pool: {{ upf_ue_ip_pool }} # IP pool used UEs if enable_ue_ip_alloc=true

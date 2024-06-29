@@ -1,0 +1,58 @@
+---
+
+- name: find {{ core.data_iface }}'s subnet for RAN
+  shell: ip route | grep {{ core.data_iface }} | awk '/kernel/ {print $1}' | head -1
+  register: result
+  when: inventory_hostname in groups['master_nodes']
+  become: true
+
+- set_fact:
+    ran_subnet: "{{ result.stdout if (core.ran_subnet == '') else core.ran_subnet }}"
+  when: inventory_hostname in groups['master_nodes']
+
+- name: remove /tmp/slice-[].yaml
+  file:
+    path: "/tmp/slice-{{ item.key }}.yaml"
+    state: absent
+  with_dict: "{{ core.slice.slices }}"
+  when: inventory_hostname in groups['master_nodes']
+
+- name: copy config files to gnbsim host
+  template:
+    src: "{{ ROOT_DIR }}/{{ core.slice.values_file }}"
+    dest: /tmp/slice-{{ item.key }}.yaml
+  vars:
+    smf_db_name: "sdcore_smf_slice_{{ item.key }}"
+    slice_sd: " \"{{ item.value.sNssai.sd }}\"  "
+    slice_sst: " {{ item.value.sNssai.sst }}"
+    ran_subnet: "{{ ran_subnet }}"
+    upf_access_ip: "{{ item.value.ip.access }}"
+    upf_core_ip:  "{{ item.value.ip.core }}"
+    upf_ue_ip_pool: "{{ item.value.ue_ip_pool }}"
+  with_dict: "{{ core.slice.slices }}"
+  when: inventory_hostname in groups['master_nodes']
+
+- name: deploy slice
+  kubernetes.core.helm:
+    update_repo_cache: true
+    # name: sd-core-1
+    # release_namespace: omec
+    name: sd-core
+    release_namespace: omec-slice-{{ item.key }}
+    create_namespace: true
+    chart_ref: "{{ core.slice.helm.chart_ref }}"
+    chart_version: "{{ core.slice.helm.chart_version }}"
+    values_files:
+      - /tmp/slice-{{ item.key }}.yaml
+    wait: true
+    wait_timeout: "5m30s"
+    force: true
+  with_dict: "{{ core.slice.slices }}"
+  when: inventory_hostname in groups['master_nodes']
+
+- name: configure route for upf traffic on gnbsim node
+  shell: |
+    ip route add {{ item.value.ue_ip_pool }} via {{ item.value.ip.core[:-3] }}
+  when: inventory_hostname in groups['master_nodes']
+  with_dict: "{{ core.slice.slices }}"
+  become: true
